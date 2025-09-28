@@ -3,13 +3,20 @@
 This GitHub repository has details for the microbial community analysis of the research paper:
 # Bio-residuals of industrial insect production as sustainable alternative fertilizer
 
-by
-### Authors and Affiliations
+### By the Authors:
+
 *Katherine Y. Barragan Fonseca* 1,2. | | ORCID: 0000-0003-3776-084X
+
 Daan Mertens 3,4 | d.mertens.sci@gmail.com | ORCID: 0000-0003-4220-9075
+
 Pedro Beschoren da Costa 1  | | ORCID: 0000-0003-1533-9296
+
 Joop van Loon 1  | | ORCID: 0000-0002-4260-0501
+
 Marcel Dicke 1 (corresponding author)  | | ORCID: 0000-0001-8565-8896
+
+
+### Affiliated to:
 
 1 - Laboratory of Entomology, Wageningen University & Research, Wageningen, The Netherlands
 2 - Grupo en Conservación y Manejo de Vida Silvestre, Instituto de Ciencias Naturales, Universidad Nacional de Colombia, Bogotá, Colombia
