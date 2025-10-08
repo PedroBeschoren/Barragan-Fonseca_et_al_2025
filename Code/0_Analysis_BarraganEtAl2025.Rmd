@@ -70,8 +70,8 @@ Analysis of the data on plant development collected in the field experiments of 
 # 1. Data
 ```{r, Field data}
 # Data
-Data2020 <- read_excel("Field_2020_2021.xlsx", sheet = "2020")
-Data2021 <- read_excel("Field_2020_2021.xlsx", sheet = "2021")
+Data2020 <- read_excel("../Data/Field_2020_2021.xlsx", sheet = "2020")
+Data2021 <- read_excel("../Data/Field_2020_2021.xlsx", sheet = "2021")
 
 # Set unique block codes for 2021 and 2021
 Data2020$Block_Code <- paste(Data2020$Block,"20", sep = "") 
