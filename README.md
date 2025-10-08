@@ -27,5 +27,5 @@ Marcel Dicke 1 (corresponding author)  | | ORCID: 0000-0001-8565-8896
 
 #### installation and use
 
-R packages are controled by renv. use renv::restore() in Rstudio to install all packages on the right versions
+several R packages in this repositoryare controled by renv. use renv::restore() in Rstudio to install these packages on the right versions.
 Versions of bioinformaic tools are described in the methodology of the research paper
