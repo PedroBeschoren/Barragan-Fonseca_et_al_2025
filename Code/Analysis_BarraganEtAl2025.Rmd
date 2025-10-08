@@ -1,0 +1,2170 @@
+---
+title: "BarraganEtAl2025_Analysis_Field"
+author: "Daan Mertens"
+date: "5/24/2023"
+output: html_document
+---
+
+Markdown document *detailing the analysis of the effects of soil amendment on plant development, the pollinator community, and seed production*, as part of "Bio-residuals of industrial insect production as novel sustainable crop fertilizer". 
+Contact info: d.mertens.sci@gmail.com
+Please use a "CC BY license" principle: Free to use and adapt, with credit to original author(s) when due.
+
+
+To make this document concise we only present the selected models, output, and construction of the figures presented in the manuscript or supporting files. We do not present the initial data exploration and model selection steps.
+
+The best fitting model was selected from: 
+- Models with Gaussian probability distribution
+- Models with Gaussian probability distribution, extended with variance functions to account for heterogeneity of data
+Depending on the type of data:
+- Models with Gamma (link = log) probability distribution
+- Models with Negative binomial, Quasi poisson, or Poisson probability distributions (link = log) 
+
+Models were then compared using AIC and for he model with lowest AIC score we verified whether model assumptions were met. If these models still poorly described the data, we transformed data using a log transformation and reiterated the selection process.
+
+# Set-up environment
+```{r, Libraries - Functions}
+# Libraries
+library(readxl) # Reads data from excel files
+library(ggplot2) # Package for plotting
+library(gridExtra) # Package for multipanel plotting
+library(lme4) # Mixed effect models
+library(nlme) # Mixed effect models
+library(glmmTMB) # Mixed effect models
+library(emmeans) # Estimate marginal means of factors in models
+library(car) # Estimate effects in Anova-like tables
+library(multcomp) # Calculate post-hoc tests
+library(multcompView) # Compact letter display of model results
+library(vegan) # Multivariate analysis
+library(bipartite) # bipartite interaction networks
+library(piecewiseSEM) # Piecewise SEM
+
+# ggplot custom theme for consistent plotting
+CustomPlot = list(
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text = element_text( color = "black"),
+        axis.line = element_line(colour = "black"),
+        panel.background = element_rect(fill = NA, colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        strip.background = element_rect(colour = "black", fill = NA),
+        strip.text = element_text(colour = "black"),
+        legend.key = element_rect(fill = NA, color = NA))
+)
+
+# Easy 'not in' function to subset
+`%notin%` <- Negate(`%in%`)
+
+# Set a vector with treatment colors. 
+Treatment.colours <- c("#8A9197FF", 
+                       "#014d64",
+                       "#3B9AB2",
+                       "#7ad2f6",
+                       "#EBCC2A",
+                       "#D55E00")
+```
+#_
+# A. Plant development in Field
+
+Analysis of the data on plant development collected in the field experiments of 2021 and 2021. 
+
+# 1. Data
+```{r, Field data}
+# Data
+Data2020 <- read_excel("Field_2020_2021.xlsx", sheet = "2020")
+Data2021 <- read_excel("Field_2020_2021.xlsx", sheet = "2021")
+
+# Set unique block codes for 2021 and 2021
+Data2020$Block_Code <- paste(Data2020$Block,"20", sep = "") 
+Data2021$Block_Code <- paste(Data2021$Block,"21", sep = "") 
+
+# Add an identifier for the year, and combine the data sets
+Data2020$Year <- 2020
+Data2021$Year <- 2021
+
+Field.Data <- rbind(Data2020,Data2021)
+
+# Set appropriate columns to factor levels
+Factors <- c("Plant_Code","Treatment","Block", "Block_Code", "Year")
+Field.Data[Factors] <- lapply(Field.Data[Factors], factor)
+
+# Specify the order of levels for consistent plotting and color matching
+Field.Data$Treatment <- factor(Field.Data$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+```
+
+# 2. Univariate analysis
+
+We fit an interaction model including the soil amendment treatments and the year in which the experiment was conducted (Response \~ Treatment \* Year), including the block in which plants were planted as random intercept to account for dependency of our data. We then assess the overall effect of the fixed factors in the model by performing a Type II Wald's Chi-square test. Finally, we perform a *post-hoc* analysis (Tukey HSD) conditional on each of the two years, and construct figures.
+
+## 2.1 Plant height T1
+```{r, Plant height T1}
+# Subset data, remove unmeasured plants
+HeightT1.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "HeightT1")])
+# Best fitting model 
+M.HeightT1 <- lme(HeightT1 ~ Treatment * Year, 
+                        random = ~1|Block_Code,
+                        weights = varComb(varIdent(form = ~ 1 | Treatment), 
+                                            varIdent(form = ~ 1 | Year)),
+                        method = "REML",
+                        na.action = na.exclude,
+                        data = HeightT1.data) 
+
+
+# Wald Chi-square test 
+Anova(M.HeightT1)
+
+# Post-hoc analysis
+PostHoc.HeightT1 <- emmeans(M.HeightT1, pairwise ~ Treatment|Year)
+CLD.M.HeightT1 <- data.frame(cld(PostHoc.HeightT1$emmeans,Letters = letters))
+
+# Figure
+ggplot(HeightT1.data, aes(x = Treatment, y = HeightT1, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.HeightT1, aes(x = Treatment, 
+                                      y = max(HeightT1.data$HeightT1) + 5 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "Height at T1") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.2 Plant height T2
+```{r, Plant height T2}
+# Subset data, remove unmeasured plants
+HeightT2.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "HeightT2")])
+
+# Best fitting model 
+M.HeightT2 <- lme(HeightT2 ~ Treatment * Year, 
+                        random = ~1|Block_Code,
+                        weights = varIdent(form = ~ 1 | Year),
+                        method = "REML",
+                        na.action = na.exclude,
+                        data = HeightT2.data) 
+
+# Wald Chi-square test 
+Anova(M.HeightT2)
+
+# Post-hoc analysis
+PostHoc.HeightT2 <- emmeans(M.HeightT2, pairwise ~ Treatment|Year)
+CLD.M.HeightT2 <- data.frame(cld(PostHoc.HeightT2$emmeans,Letters = letters))
+
+# Figure
+ggplot(HeightT2.data, aes(x = Treatment, y = HeightT2, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.HeightT2, aes(x = Treatment, 
+                                      y = max(HeightT2.data$HeightT2) + 15 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "Height at T2") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 110)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.3 Plant width T1
+```{r, Plant width T1}
+# Subset data, remove unmeasured plants
+WidthT1.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "WidthT1")])
+
+# Best fitting model 
+M.WidthT1 <- lme(WidthT1 ~ Treatment * Year,
+                 random = ~1|Block_Code, 
+                 weights = varComb(varIdent(form = ~ 1 | Treatment),
+                                   varIdent(form = ~ 1 | Year)),
+                 method = "REML",
+                 na.action = na.exclude,
+                 data = WidthT1.data) 
+                     
+# Wald Chi-square test 
+Anova(M.WidthT1)
+
+# Post-hoc analysis
+PostHoc.WidthT1 <- emmeans(M.WidthT1, pairwise ~ Treatment|Year)
+CLD.M.WidthT1 <- data.frame(cld(PostHoc.WidthT1$emmeans,Letters = letters))
+
+# Figure
+ggplot(WidthT1.data, aes(x = Treatment, y = WidthT1, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.WidthT1, aes(x = Treatment, 
+                                      y = max(WidthT1.data$WidthT1) + 4 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "Width at T1") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 40)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.4 Plant width T2
+```{r, Plant width T2}
+# Subset data, remove unmeasured plants
+WidthT2.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "WidthT2")])
+
+# Best fitting model 
+M.WidthT2 <- lme(WidthT2 ~ Treatment * Year, 
+                 random = ~1|Block_Code,
+                 weights = varIdent(form = ~ 1 | Year),
+                 method = "REML",
+                 na.action = na.exclude,
+                 data = WidthT2.data)
+
+# Wald Chi-square test 
+Anova(M.WidthT2)
+
+# Post-hoc analysis
+PostHoc.WidthT2 <- emmeans(M.WidthT2, pairwise ~ Treatment|Year)
+CLD.M.WidthT2 <- data.frame(cld(PostHoc.WidthT2$emmeans,Letters = letters))
+
+# Figure
+ggplot(WidthT2.data, aes(x = Treatment, y = WidthT2, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.WidthT2, aes(x = Treatment, 
+                                      y = max(WidthT2.data$WidthT2) + 5 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "Width at T2") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 65)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+##  2.5 Number of flowers T1
+```{r, Number of flowers T1}
+# Subset data, remove unmeasured plants
+NFlowerT1.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "NflowT1")])
+
+# Exploration and initial analysis showed that log transformation was necessary for regression analysis
+NFlowerT1.data$NflowT1 <- log(NFlowerT1.data$NflowT1)
+
+# Best fitting model 
+M.NFlowerT1 <- lme(NflowT1 ~ Treatment * Year,
+                   random = ~1|Block_Code,
+                   weights = varIdent(form = ~ 1 | Year),
+                   method = "REML",
+                   na.action = na.exclude,
+                   data = NFlowerT1.data)
+                     
+# Wald Chi-square test 
+Anova(M.NFlowerT1)
+
+# Post-hoc analysis
+PostHoc.NFlowerT1 <- emmeans(M.NFlowerT1, pairwise ~ Treatment|Year)
+CLD.M.NFlowerT1 <- data.frame(cld(PostHoc.NFlowerT1$emmeans,Letters = letters))
+
+# Figure
+ggplot(NFlowerT1.data, aes(x = Treatment, y = NflowT1, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.NFlowerT1, aes(x = Treatment, 
+                                      y = max(NFlowerT1.data$NflowT1) + 1 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "log (Number of flowers) at T1") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 8)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.6 Number of flowers T2
+```{r, Number of flowers T2}
+# Subset data, remove unmeasured plants
+NFlowerT2.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "NflowT2")])
+
+# Exploration and initial analysis showed that log transformation was necessary for regression analysis
+NFlowerT2.data$NflowT2 <- log(NFlowerT2.data$NflowT2)
+
+# Best fitting model 
+M.NFlowerT2 <- lme(NflowT2 ~ Treatment * Year,
+                   random = ~1|Block_Code,
+                   weights = varComb(varIdent(form = ~ 1 | Treatment), 
+                                     varIdent(form = ~ 1 | Year)),
+                   method = "REML",
+                   na.action = na.exclude,
+                   data = NFlowerT2.data)
+
+# Wald Chi-square test 
+Anova(M.NFlowerT2)
+
+# Post-hoc analysis
+PostHoc.NFlowerT2 <- emmeans(M.NFlowerT2, pairwise ~ Treatment|Year)
+CLD.M.NFlowerT2 <- data.frame(cld(PostHoc.NFlowerT2$emmeans,Letters = letters))
+
+# Figure
+ggplot(NFlowerT2.data, aes(x = Treatment, y = NflowT2, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.NFlowerT2, aes(x = Treatment, 
+                                      y = max(NFlowerT2.data$NflowT2) + 1.2 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "log (Number of flowers) at T2") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 9)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.7 Days until flowering
+```{r, Days until flowering}
+# Subset data, remove unmeasured plants
+SowToFlower.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "Sow_To_Flower")])
+
+# Exploration and initial analysis showed that log transformation was necessary for regression analysis
+SowToFlower.data$Sow_To_Flower <- log(SowToFlower.data$Sow_To_Flower)
+
+# Best fitting model 
+M.SowToFlower <- lme(Sow_To_Flower ~ Treatment * Year,
+                     random = ~1|Block_Code,
+                     weights =  varIdent(form = ~ 1 | Year),
+                     method = "REML",
+                     na.action = na.exclude,
+                     data = SowToFlower.data)
+
+# Wald Chi-square test 
+Anova(M.SowToFlower)
+
+# Post-hoc analysis
+PostHoc.SowToFlower <- emmeans(M.SowToFlower, pairwise ~ Treatment|Year)
+CLD.M.SowToFlower <- data.frame(cld(PostHoc.SowToFlower$emmeans,Letters = letters))
+
+# Figure
+ggplot(SowToFlower.data, aes(x = Treatment, y = Sow_To_Flower, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.SowToFlower, aes(x = Treatment, 
+                                      y = max(SowToFlower.data$Sow_To_Flower) + 0.5 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "log (Days until flowring)") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 5)) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+## 2.8 Seed set
+```{r, Seed set}
+# Select data, remove plants which did not reproduce
+Seedset.data <- na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", "Plant_Code", "Nseeds")])
+
+# Exploration and initial analysis showed that log transformation was necessary for regression analysis
+Seedset.data$Nseeds <- log(Seedset.data$Nseeds)
+
+# Best fitting model 
+M.Seedset <- lme(Nseeds ~ Treatment * Year, 
+                          random = ~1|Block_Code, 
+                          weights = varComb(varIdent(form = ~ 1 | Treatment), 
+                                            varIdent(form = ~ 1 | Year)),
+                          method = "REML",
+                          data = Seedset.data)
+
+# Wald Chi-square test 
+Anova(M.Seedset)
+
+# Post-hoc analysis
+PostHoc.Seedset <- emmeans(M.Seedset, pairwise ~ Treatment|Year)
+CLD.M.Seedset <- data.frame(cld(PostHoc.Seedset$emmeans,Letters = letters))
+
+# Figure
+ggplot(Seedset.data, aes(x = Treatment, y = Nseeds, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.M.Seedset, aes(x = Treatment, 
+                                      y = max(Seedset.data$Nseeds) + 1 , 
+                                      label = .group), 
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "log (Number of seeds)") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 13) ) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+# 3. Multivariate analysis
+
+Here, we use ordination to represent variation in plant development among treatments in multivariate space. We then apply non-parametric multivariate analysis of variance (PERMANOVA) to test if treatments significantly explain (part of) the variation in our data. Finally, we assess pairwise differences between the different treatments by comparing subsets of the data and adjusting the p-values obtained by PERMANOVA using false-discovery rates.
+
+## 3.1 PCA Ordination 
+### 3.1.1 PCA T1 2020
+```{r, PCA T1 2020}
+# Subset and transform data to match regression analysis
+Field.Data.2020 <- subset(Field.Data, Year == 2020)
+
+Field.Data.2020_T1 <- na.omit(Field.Data.2020[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "WidthT1",
+                                                 "HeightT1",
+                                                 "NflowT1",
+                                                 "Sow_To_Flower")])
+
+Field.Data.2020_T1$NflowT1 <- log(Field.Data.2020_T1$NflowT1)
+Field.Data.2020_T1$Sow_To_Flower <- log(Field.Data.2020_T1$Sow_To_Flower)
+# Scale variables to mean = 0 and SD = 1
+Field.Data.2020_T1_Scaled <- data.frame(Field.Data.2020_T1[,c(1:4)], scale(Field.Data.2020_T1[,5:8]))
+
+# Calculate PCA
+PCA_T1_2020 <- rda(Field.Data.2020_T1_Scaled[,c(5:8)])
+
+# Extract scores to calculate centroids and plotting
+Coordinates_T1_2020 <- summary(PCA_T1_2020)$sites
+Annotated_Coordinates_T1_2020 <- cbind(Field.Data.2020_T1_Scaled[1:4],Coordinates_T1_2020)
+Traits_T1_2020 <- as.data.frame(summary(PCA_T1_2020)$species)
+
+# Calculate centroids
+PC1.Centroid <- as.data.frame(emmeans(lm(PC1 ~ Treatment, data = Annotated_Coordinates_T1_2020), ~ Treatment))
+PC2.Centroid <- as.data.frame(emmeans(lm(PC2 ~ Treatment, data = Annotated_Coordinates_T1_2020), ~ Treatment))
+
+Centroids_T1_2020 <- data.frame("Treatment" = c("C","HC","BSF","MW","CHT","OF"),
+                                "PC1" = as.vector(PC1.Centroid$emmean),
+                                "SE1" = as.vector(PC1.Centroid$SE),
+                                "PC2" = as.vector(PC2.Centroid$emmean),
+                                "SE2" = as.vector(PC2.Centroid$SE))
+
+Centroids_T1_2020$Treatment <- factor(Centroids_T1_2020$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+```
+
+### 3.1.2  PCA T1 2021
+```{r, PCA T1 2021}
+# Subset and transform data to match regression analysis
+Field.Data.2021 <- subset(Field.Data, Year == 2021)
+
+Field.Data.2021_T1 <- na.omit(Field.Data.2021[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "WidthT1",
+                                                 "HeightT1",
+                                                 "NflowT1",
+                                                 "Sow_To_Flower")])
+
+Field.Data.2021_T1$NflowT1 <- log(Field.Data.2021_T1$NflowT1)
+Field.Data.2021_T1$Sow_To_Flower <- log(Field.Data.2021_T1$Sow_To_Flower)
+
+# Scale variables to mean = 0 and SD = 1
+Field.Data.2021_T1_Scaled <- data.frame(Field.Data.2021_T1[,c(1:4)], scale(Field.Data.2021_T1[,5:8]))
+
+# Calculate PCA
+PCA_T1_2021 <- rda(Field.Data.2021_T1_Scaled[,c(5:8)])
+
+# Extract scores to calculate centroids and plotting
+Coordinates_T1_2021 <- summary(PCA_T1_2021)$sites
+Annotated_Coordinates_T1_2021 <- cbind(Field.Data.2021_T1_Scaled[1:4],Coordinates_T1_2021)
+Traits_T1_2021 <- as.data.frame(summary(PCA_T1_2021)$species)
+
+# Calculate centroids
+PC1.Centroid <- as.data.frame(emmeans(lm(PC1 ~ Treatment, data = Annotated_Coordinates_T1_2021), ~ Treatment))
+PC2.Centroid <- as.data.frame(emmeans(lm(PC2 ~ Treatment, data = Annotated_Coordinates_T1_2021), ~ Treatment))
+
+Centroids_T1_2021 <- data.frame("Treatment" = c("C","HC","BSF","MW","CHT","OF"),
+                                "PC1" = as.vector(PC1.Centroid$emmean),
+                                "SE1" = as.vector(PC1.Centroid$SE),
+                                "PC2" = as.vector(PC2.Centroid$emmean),
+                                "SE2" = as.vector(PC2.Centroid$SE))
+
+Centroids_T1_2021$Treatment <- factor(Centroids_T1_2021$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+```
+
+### 3.1.3 PCA T2 2020
+```{r, PCA T2 2020}
+# Subset and transform data to match regression analysis
+Field.Data.2020 <- subset(Field.Data, Year == 2020)
+
+Field.Data.2020_T2 <- na.omit(Field.Data.2020[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "WidthT2",
+                                                 "HeightT2",
+                                                 "NflowT2")])
+
+Field.Data.2020_T2$NflowT2 <- log(Field.Data.2020_T2$NflowT2)
+
+# Scale variables to mean = 0 and SD = 1
+Field.Data.2020_T2_Scaled <- data.frame(Field.Data.2020_T2[,c(1:4)], scale(Field.Data.2020_T2[,5:7]))
+
+# Calculate PCA
+PCA_T2_2020 <- rda(Field.Data.2020_T2_Scaled[,c(5:7)])
+
+# Extract scores to calculate centroids and plotting
+Coordinates_T2_2020 <- summary(PCA_T2_2020)$sites
+Annotated_Coordinates_T2_2020 <- cbind(Field.Data.2020_T2_Scaled[1:4],Coordinates_T2_2020)
+Traits_T2_2020 <- as.data.frame(summary(PCA_T2_2020)$species)
+
+# Calculate centroids
+PC1.Centroid <- as.data.frame(emmeans(lm(PC1 ~ Treatment, data = Annotated_Coordinates_T2_2020), ~ Treatment))
+PC2.Centroid <- as.data.frame(emmeans(lm(PC2 ~ Treatment, data = Annotated_Coordinates_T2_2020), ~ Treatment))
+
+Centroids_T2_2020 <- data.frame("Treatment" = c("C","HC","BSF","MW","CHT","OF"),
+                                "PC1" = as.vector(PC1.Centroid$emmean),
+                                "SE1" = as.vector(PC1.Centroid$SE),
+                                "PC2" = as.vector(PC2.Centroid$emmean),
+                                "SE2" = as.vector(PC2.Centroid$SE))
+
+Centroids_T2_2020$Treatment <- factor(Centroids_T2_2020$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+```
+
+### 3.1.4 PCA T2 2021
+```{r, PCA T2 2021}
+# Subset and transform data to match regression analysis
+Field.Data.2021 <- subset(Field.Data, Year == 2021)
+
+Field.Data.2021_T2 <- na.omit(Field.Data.2021[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "WidthT2",
+                                                 "HeightT2",
+                                                 "NflowT2")])
+
+Field.Data.2021_T2$NflowT2 <- log(Field.Data.2021_T2$NflowT2)
+
+# Scale variables to mean = 0 and SD = 1
+Field.Data.2021_T2_Scaled <- data.frame(Field.Data.2021_T2[,c(1:4)], scale(Field.Data.2021_T2[,5:7]))
+
+# Calculate PCA
+PCA_T2_2021 <- rda(Field.Data.2021_T2_Scaled[,c(5:7)])
+
+# Extract scores to calculate centroids and plotting
+Coordinates_T2_2021 <- summary(PCA_T2_2021)$sites
+Annotated_Coordinates_T2_2021 <- cbind(Field.Data.2021_T2_Scaled[1:4],Coordinates_T2_2021)
+Traits_T2_2021 <- as.data.frame(summary(PCA_T2_2021)$species)
+
+# Calculate centroids
+PC1.Centroid <- as.data.frame(emmeans(lm(PC1 ~ Treatment, data = Annotated_Coordinates_T2_2021), ~ Treatment))
+PC2.Centroid <- as.data.frame(emmeans(lm(PC2 ~ Treatment, data = Annotated_Coordinates_T2_2021), ~ Treatment))
+
+Centroids_T2_2021 <- data.frame("Treatment" = c("C","HC","BSF","MW","CHT","OF"),
+                                "PC1" = as.vector(PC1.Centroid$emmean),
+                                "SE1" = as.vector(PC1.Centroid$SE),
+                                "PC2" = as.vector(PC2.Centroid$emmean),
+                                "SE2" = as.vector(PC2.Centroid$SE))
+
+Centroids_T2_2021$Treatment <- factor(Centroids_T2_2021$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+```
+
+### 3.1.4 Plot ordinations
+``` {r, Plot ordinations}
+Loading_PCA <- vector(mode = "list", length = 4)
+
+Loading_PCA[[1]] <- ggplot() +
+  geom_point(data = Annotated_Coordinates_T1_2020, aes(x = PC1, y = PC2, colour = Treatment), alpha = 0.4, show.legend = F) + 
+  geom_point(data = Centroids_T1_2020, 
+             aes(x = PC1, y = PC2,colour = Treatment), 
+             show.legend = F, 
+             size = 4,
+             shape = 17) +
+  geom_segment(data = Traits_T1_2020, 
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.03,units = "npc"))) +
+  geom_text(data = Traits_T1_2020, 
+            aes(x = PC1, y = PC2, label = row.names(Traits_T1_2020)),
+            check_overlap = TRUE, 
+            nudge_x = 0.15, 
+            nudge_y = -0.08) +
+  labs(title = "2020 Timepoint 1 ",x = "PC1 (39.91%)", y = "PC2 (34.58%)") +
+  scale_colour_manual(values = Treatment.colours) +
+  CustomPlot
+
+Loading_PCA[[2]] <- ggplot() +
+  geom_point(data = Annotated_Coordinates_T1_2021, aes(x = PC1, y = PC2, colour = Treatment), alpha = 0.4, show.legend = F) + 
+  geom_point(data = Centroids_T1_2021, 
+             aes(x = PC1, y = PC2, colour = Treatment), 
+             show.legend = F, 
+             size = 4,
+             shape = 17) +
+  geom_segment(data = Traits_T1_2021, 
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.03, units = "npc"))) +
+  geom_text(data = Traits_T1_2021, 
+            aes(x = PC1, y = PC2, label = row.names(Traits_T1_2021)),
+            check_overlap = TRUE, 
+            nudge_x = 0.05, 
+            nudge_y = -0.05) +
+  labs(title = "2021 Timepoint 1",x = "PC1 (47.22%)", y = "PC2 (24.87%)") +
+  scale_colour_manual(values = Treatment.colours) +
+  CustomPlot
+
+Loading_PCA[[3]] <- ggplot() +
+  geom_point(data = Annotated_Coordinates_T2_2020, aes(x = PC1, y = PC2, colour = Treatment), alpha = 0.4, show.legend = F) + 
+  geom_point(data = Centroids_T2_2020, 
+             aes(x = PC1, y = PC2, colour = Treatment), 
+             show.legend = F, 
+             size = 4,
+             shape = 17) +
+  geom_segment(data = Traits_T2_2020, 
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.03,units = "npc"))) +
+  geom_text(data = Traits_T2_2020, 
+            aes(x = PC1, y = PC2, label = row.names(Traits_T2_2021)),
+            check_overlap = TRUE, 
+            nudge_x = 0.05, 
+            nudge_y = -0.05) +
+  labs(title = "2020 Timepoint 2",x = "PC1 (60.00%)", y = "PC2 (24.87%)") +
+  scale_colour_manual(values = Treatment.colours) +
+  CustomPlot
+
+Loading_PCA[[4]] <- ggplot() +
+  geom_point(data = Annotated_Coordinates_T2_2021, aes(x = PC1, y = PC2, colour = Treatment), alpha = 0.4, show.legend = F) + 
+  geom_point(data = Centroids_T2_2021,
+             aes(x = PC1, y = PC2, colour = Treatment), 
+             show.legend = F, 
+             size = 4,
+             shape = 17) + 
+  geom_segment(data = Traits_T2_2021, 
+               aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.03,units = "npc"))) +
+  geom_text(data = Traits_T2_2021, 
+            aes(x = PC1, y = PC2, label = row.names(Traits_T2_2021)),
+            check_overlap = TRUE, 
+            nudge_x = 0.05, 
+            nudge_y = -0.05) +
+  labs(title = "2021 Timepoint 2",x = "PC1 (69.86%)", y = "PC2 (15.53%)") +
+  scale_colour_manual(values = Treatment.colours) +
+  CustomPlot
+
+Ordination_Layout <- rbind(c(1,2),c(3,4)) 
+
+Loading_PCA_Plotted <- marrangeGrob(Loading_PCA, nrow = 2, ncol = 2,layout_matrix = Ordination_Layout)
+Loading_PCA_Plotted
+```
+## 3.2 Treatment effects
+
+### 3.2.1 T1 2020
+```{r, Permutation T1 2020}
+Permutation.Design <- how(nperm = 1000,
+                          # Do not shuffle the plants between blocks
+                          blocks = Field.Data.2020_T1_Scaled$Block)
+
+(T1_2020 <- adonis2(Field.Data.2020_T1_Scaled[,c(5:8)] ~ Treatment, 
+                    data = Field.Data.2020_T1_Scaled, 
+                    method = "euclidean",
+                    permutations = Permutation.Design))
+
+```
+
+### 3.2.2 T1 2021
+```{r, Permutation T1 2021}
+Permutation.Design <- how(nperm = 1000,
+                          # Do not shuffle the plants between blocks
+                          blocks = Field.Data.2021_T1_Scaled$Block)
+
+(T1_2021 <- adonis2(Field.Data.2021_T1_Scaled[,c(5:8)] ~ Treatment, 
+                    data = Field.Data.2021_T1_Scaled, 
+                    method = "euclidean",
+                    permutations = Permutation.Design))
+
+```
+
+### 3.2.3 T2 2020
+```{r, Permutation T2 2020}
+Permutation.Design <- how(nperm = 1000,
+                          # Do not shuffle the plants between blocks
+                          blocks = Field.Data.2020_T2_Scaled$Block)
+
+(T2_2020 <- adonis2(Field.Data.2020_T2_Scaled[,c(5:7)] ~ Treatment, 
+                    data = Field.Data.2020_T2_Scaled, 
+                    method = "euclidean",
+                    permutations = Permutation.Design))
+
+```
+
+### 3.2.4 T2 2021
+```{r, Permutation T2 2021}
+Permutation.Design <- how(nperm = 1000,
+                          # Do not shuffle the plants between blocks
+                          blocks = Field.Data.2021_T2_Scaled$Block)
+
+(T2_2021 <- adonis2(Field.Data.2021_T2_Scaled[,c(5:7)] ~ Treatment, 
+                    data = Field.Data.2021_T2_Scaled, 
+                    method = "euclidean",
+                    permutations = Permutation.Design))
+
+```
+
+## 3.3 Pairwise comparisons
+
+
+### 3.3.1 T1_2021
+```{r, Pairwise T1_2020}
+Different.Treatments <- levels(Field.Data$Treatment)
+N_Perm = 1000
+
+T1_2020.Comparisons <-data.frame("Treatment_A" = c(rep("C", 5),
+                                                   rep("HC", 4),
+                                                   rep("BSF", 3),
+                                                   rep("MW", 2),
+                                                   "CHT"),
+                                 "Treatment_B" = c(Different.Treatments[-1],
+                                                   Different.Treatments[3:6],
+                                                   Different.Treatments[4:6],
+                                                   Different.Treatments[5:6],
+                                                   Different.Treatments[6]),
+                                 "Pseudo_F" = 1,
+                                 "P_Value" = 1)
+
+for(i in 1:(nrow(T1_2020.Comparisons))){
+  
+  Sub.data <- subset(Field.Data.2020_T1_Scaled, Treatment == c(T1_2020.Comparisons[i,1], 
+                                                               T1_2020.Comparisons[i,2]))
+  Permutation.Design <- how(nperm = N_Perm,
+                            # Do not shuffle the plants between blocks
+                            blocks = Sub.data$Block)
+  Perm.Comp <- adonis2(Sub.data[,c(5:8)] ~ Treatment, 
+                       data = Sub.data, 
+                       method = "euclidean",
+                       permutations = Permutation.Design)
+  
+  T1_2020.Comparisons[i,3] <- Perm.Comp$F[1]
+  T1_2020.Comparisons[i,4] <- Perm.Comp$`Pr(>F)`[1]
+  
+}
+T1_2020.Comparisons$FDR <- p.adjust(T1_2020.Comparisons$P_Value, method = "fdr")
+
+
+```
+
+### 3.3.2 T1_2021
+```{r, Pairwise T1_2021}
+Different.Treatments <- levels(Field.Data$Treatment)
+N_Perm = 1000
+
+T1_2021.Comparisons <-data.frame("Treatment_A" = c(rep("C", 5),
+                                                   rep("HC", 4),
+                                                   rep("BSF", 3),
+                                                   rep("MW", 2),
+                                                   "CHT"),
+                                 "Treatment_B" = c(Different.Treatments[-1],
+                                                   Different.Treatments[3:6],
+                                                   Different.Treatments[4:6],
+                                                   Different.Treatments[5:6],
+                                                   Different.Treatments[6]),
+                                 "Pseudo_F" = 1,
+                                 "P_Value" = 1)
+
+for(i in 1:(nrow(T1_2021.Comparisons))){
+  
+  Sub.data <- subset(Field.Data.2021_T1_Scaled, Treatment == c(T1_2021.Comparisons[i,1], 
+                                                               T1_2021.Comparisons[i,2]))
+  Permutation.Design <- how(nperm = N_Perm,
+                            # Do not shuffle the plants between blocks
+                            blocks = Sub.data$Block)
+  Perm.Comp <- adonis2(Sub.data[,c(5:8)] ~ Treatment, 
+                       data = Sub.data, 
+                       method = "euclidean",
+                       permutations = Permutation.Design)
+  
+  T1_2021.Comparisons[i,3] <- Perm.Comp$F[1]
+  T1_2021.Comparisons[i,4] <- Perm.Comp$`Pr(>F)`[1]
+  
+}
+T1_2021.Comparisons$FDR <- p.adjust(T1_2021.Comparisons$P_Value, method = "fdr")
+
+```
+
+
+### 3.3.3 T2_2020
+```{r, Pairwise T2_2020}
+Different.Treatments <- levels(Field.Data$Treatment)
+N_Perm = 1000
+
+T2_2020.Comparisons <-data.frame("Treatment_A" = c(rep("C", 5),
+                                                   rep("HC", 4),
+                                                   rep("BSF", 3),
+                                                   rep("MW", 2),
+                                                   "CHT"),
+                                 "Treatment_B" = c(Different.Treatments[-1],
+                                                   Different.Treatments[3:6],
+                                                   Different.Treatments[4:6],
+                                                   Different.Treatments[5:6],
+                                                   Different.Treatments[6]),
+                                 "Pseudo_F" = 1,
+                                 "P_Value" = 1)
+
+for(i in 1:(nrow(T2_2020.Comparisons))){
+  
+  Sub.data <- subset(Field.Data.2020_T2_Scaled, Treatment == c(T2_2020.Comparisons[i,1], 
+                                                               T2_2020.Comparisons[i,2]))
+  Permutation.Design <- how(nperm = N_Perm,
+                            # Do not shuffle the plants between blocks
+                            blocks = Sub.data$Block)
+  Perm.Comp <- adonis2(Sub.data[,c(5:7)] ~ Treatment, 
+                       data = Sub.data, 
+                       method = "euclidean",
+                       permutations = Permutation.Design)
+  
+  T2_2020.Comparisons[i,3] <- Perm.Comp$F[1]
+  T2_2020.Comparisons[i,4] <- Perm.Comp$`Pr(>F)`[1]
+  
+}
+T2_2020.Comparisons$FDR <- p.adjust(T2_2020.Comparisons$P_Value, method = "fdr")
+
+```
+
+### 3.3.4 T2_2021
+```{r, Pairwise T2_2021}
+Different.Treatments <- levels(Field.Data$Treatment)
+N_Perm = 1000
+
+T2_2021.Comparisons <-data.frame("Treatment_A" = c(rep("C", 5),
+                                                   rep("HC", 4),
+                                                   rep("BSF", 3),
+                                                   rep("MW", 2),
+                                                   "CHT"),
+                                 "Treatment_B" = c(Different.Treatments[-1],
+                                                   Different.Treatments[3:6],
+                                                   Different.Treatments[4:6],
+                                                   Different.Treatments[5:6],
+                                                   Different.Treatments[6]),
+                                 "Pseudo_F" = 1,
+                                 "P_Value" = 1)
+
+for(i in 1:(nrow(T2_2021.Comparisons))){
+  
+  Sub.data <- subset(Field.Data.2021_T2_Scaled, Treatment == c(T2_2021.Comparisons[i,1], 
+                                                               T2_2021.Comparisons[i,2]))
+  Permutation.Design <- how(nperm = N_Perm,
+                            # Do not shuffle the plants between blocks
+                            blocks = Sub.data$Block)
+  Perm.Comp <- adonis2(Sub.data[,c(5:7)] ~ Treatment, 
+                       data = Sub.data, 
+                       method = "euclidean",
+                       permutations = Permutation.Design)
+  
+  T2_2021.Comparisons[i,3] <- Perm.Comp$F[1]
+  T2_2021.Comparisons[i,4] <- Perm.Comp$`Pr(>F)`[1]
+  
+}
+T2_2021.Comparisons$FDR <- p.adjust(T2_2021.Comparisons$P_Value, method = "fdr")
+
+```
+
+#_
+# B. Pollinators
+
+Analysis of the pollinator data collected in the field experiment in seasons 2020 and 2021.
+
+# 1. Data
+```{r, Pollinator Data}
+# Data
+Data2021 <- read_excel("Field_2020_2021.xlsx", sheet = "2020")
+Data2021 <- read_excel("Field_2020_2021.xlsx", sheet = "2021")
+
+# Set unique block codes for 2021 and 2021
+Data2021$Block_Code <- paste(Data2020$Block,"20", sep = "") 
+Data2021$Block_Code <- paste(Data2021$Block,"21", sep = "") 
+
+# Add an identifier for the year, and combine the data sets
+Data2021$Year <- 2020
+Data2021$Year <- 2021
+
+Field.Data <- rbind(Data2020,Data2021)
+
+# Set appropriate columns to factor levels
+Factors <- c("Plant_Code","Treatment","Block", "Block_Code", "Year")
+Field.Data[Factors] <- lapply(Field.Data[Factors], factor)
+
+# Specify the order of levels for consistent plotting and color matching
+Field.Data$Treatment <- factor(Field.Data$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+# Select the pollinator data
+Pollinator.Data <-  na.omit(Field.Data[,c("Treatment", "Year", "Block_Code", 
+                                          "Plant_Code", "TotalPollinators", "FPP")])
+
+
+```
+
+# 2. Total number of pollinators
+```{r, N_Pollinators}
+# Best fitting model 
+M.TotalPollinators <- glmmTMB(TotalPollinators ~ Treatment * Year + (1|Block_Code),
+                              family = Gamma(link = "log"),
+                              data = Pollinator.Data)
+
+# Wald Chi-square test 
+Anova(M.TotalPollinators)
+
+# Post-hoc analysis
+Post.hoc.TotalPollinators <- emmeans(M.TotalPollinators, pairwise ~ Treatment|Year, type = "response")
+CLD.TotalPollinators <- data.frame(cld(Post.hoc.TotalPollinators$emmeans,Letters = letters))
+
+# Figure
+ggplot(data = Pollinator.Data, 
+       aes(x = Treatment, y = TotalPollinators, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.TotalPollinators, 
+            aes(x = Treatment, y = max(na.omit(Pollinator.Data$TotalPollinators)) + 5 ,label = .group),
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "Total number of Pollinators") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 70) ) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+```
+
+# 3. Flower visits per pollinator
+```{r, FPP}
+# Exploration and initial analysis showed that log transformation was necessary for regression analysis
+Pollinator.Data$FPP <- log(Pollinator.Data$FPP)
+
+# Best fitting model 
+M.FPP <- lme(FPP ~ Treatment * Year,
+             random = ~1|Block_Code, 
+             weights = varComb(varIdent(form = ~ 1 | Treatment), varIdent(form = ~ 1 | Year)),
+             method = "REML",
+             na.action = na.exclude,
+             data = Pollinator.Data)
+
+# Wald Chi-square test 
+Anova(M.FPP)
+
+# Post-hoc analysis
+Post.hoc.FPP <- emmeans(M.FPP, pairwise ~ Treatment|Year, type = "response")
+CLD.FPP <- data.frame(cld(Post.hoc.FPP$emmeans,Letters = letters))
+
+# Figure
+ggplot(data = Pollinator.Data, 
+       aes(x = Treatment, y = FPP, fill = Treatment, colour = Treatment)) +
+  facet_wrap(~Year) + 
+  geom_boxplot(aes(alpha = 0.3), colour = "black", outlier.shape = 0, outlier.colour = "white") +
+  geom_jitter (width = 0.25, height = 0, size = 1) +
+  geom_text(data = CLD.FPP, 
+            aes(x = Treatment, y = max(na.omit(Pollinator.Data$FPP)) + 0.5 ,label = .group),
+            colour = 'black') +
+  scale_fill_manual(values = Treatment.colours) +
+  scale_colour_manual(values = Treatment.colours) +
+  labs(y = "log(Number of flowers visited per pollinator)") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 4) ) +
+  guides(alpha = "none", shape = "none", colour = "none", fill = "none") +
+  CustomPlot
+
+
+```
+
+# 4. Interaction networks
+
+```{r, interaction networks data wrangling}
+# Select the pollinator data
+Pollinator.Groups <-  Field.Data[,c("Treatment", "Year", "Block","Plant_Code",
+                                            "Tsyrphid","TOFlies","THBee","TSBee", "TBBee",
+                                            "Tsyrphid2","TOFlies2","THBee2","TSBee2", "TBBee2")]
+
+# Subset 2020
+Pollinator.Groups.2020 <- subset(Pollinator.Groups, Year == 2020)
+
+# Subset 2020 observation round 1
+Pollinator.Groups.2020_T1 <- na.omit(Pollinator.Groups.2020[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "Tsyrphid",
+                                                 "TOFlies",
+                                                 "THBee",
+                                                 "TSBee", 
+                                                 "TBBee")])
+
+# Subset 2020 observation round 2
+Pollinator.Groups.2020_T2 <- na.omit(Pollinator.Groups.2020[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "Tsyrphid2",
+                                                 "TOFlies2",
+                                                 "THBee2",
+                                                 "TSBee2", 
+                                                 "TBBee2")])
+                                     
+# Subset 2021
+Pollinator.Groups.2021 <- subset(Pollinator.Groups, Year == 2021)
+
+# Subset 2021 observation round 1
+Pollinator.Groups.2021_T1 <- na.omit(Pollinator.Groups.2021[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "Tsyrphid",
+                                                 "TOFlies",
+                                                 "THBee",
+                                                 "TSBee", 
+                                                 "TBBee")])
+
+# Subset 2021 observation round 2
+Pollinator.Groups.2021_T2 <- na.omit(Pollinator.Groups.2021[,c("Treatment",
+                                                 "Year",
+                                                 "Block",
+                                                 "Plant_Code",
+                                                 "Tsyrphid2",
+                                                 "TOFlies2",
+                                                 "THBee2",
+                                                 "TSBee2", 
+                                                 "TBBee2")])
+
+```
+
+Construct bipartite interaction networks
+
+```{r, interaction network plots}
+# _ Year 1 - T1 ----
+# Number of plants
+N_Plants <- table(Pollinator.Groups.2020_T1$Treatment)
+
+# Number of observations in each of the treatments
+Agg.Pollinator.Groups.2020_T1 <- aggregate(Pollinator.Groups.2020_T1[,5:9], 
+                                           by = list(Pollinator.Groups.2020_T1$Treatment), 
+                                           FUN = sum)
+
+
+# Average number of observations per plant in each treatment
+Agg.Pollinator.Groups.2020_T1_REL <-  Agg.Pollinator.Groups.2020_T1[,2:6] / N_Plants
+
+# Set rownames
+row.names(Agg.Pollinator.Groups.2020_T1_REL) <-  Agg.Pollinator.Groups.2020_T1$Group.1
+
+# Adjust the column names
+colnames(Agg.Pollinator.Groups.2020_T1_REL) <- c("Syrphid flies", 
+                                             "Other flies", 
+                                             "Honey bees", 
+                                             "Solitary bees", 
+                                             "Bumblebees")
+
+# Set a vector with colours for the Pollinators 
+Pollinator.colours <- c("#f6412d", # Syrphids
+                        "#ff5607", # Other flies
+                        "#ff9800", # Honeybees
+                        "#ffc100", # Solitary bees
+                        "#ffec19") # Bumblebees
+
+# Set a vector with colours for the Interactions 
+Interaction.colours <- adjustcolor (Pollinator.colours, # Use the same colours as those for the pollinators
+                                    alpha.f = 0.5) # Interactions are transparent
+
+
+# Plot the  network
+plotweb(Agg.Pollinator.Groups.2020_T1_REL,
+        method = "normal", # Takes the order of treatments and pollinators as it is given in the data frame
+        col.low = Treatment.colours, # Colours the boxes of the treatments
+        col.high = Pollinator.colours, # Colours the boxes of the pollinators
+        col.interaction = Interaction.colours, # Colours the interaction lines
+        ybig = 1.2, # Makes the space between upper and lower boxes a bit smaller
+        bor.col.interaction = NA, # Remove the black border color
+        bor.col.high = NA, # Remove the black border color
+        bor.col.low = NA,  # Remove the black border color
+        text.rot = 0) # Rotate the labels 90 degrees
+
+# _ Year 2 - T1 ----
+# Number of plants
+N_Plants <- table(Pollinator.Groups.2021_T1$Treatment)
+
+# Number of observations in each of the treatments
+Agg.Pollinator.Groups.2021_T1 <- aggregate(Pollinator.Groups.2021_T1[,5:9], 
+                                           by = list(Pollinator.Groups.2021_T1$Treatment), 
+                                           FUN = sum)
+
+
+# Average number of observations per plant in each treatment
+Agg.Pollinator.Groups.2021_T1_REL <-  Agg.Pollinator.Groups.2021_T1[,2:6] / N_Plants
+
+# Set rownames
+row.names(Agg.Pollinator.Groups.2021_T1_REL) <-  Agg.Pollinator.Groups.2021_T1$Group.1
+
+# Adjust the column names
+colnames(Agg.Pollinator.Groups.2021_T1_REL) <- c("Syrphid flies", 
+                                                 "Other flies", 
+                                                 "Honey bees", 
+                                                 "Solitary bees", 
+                                                 "Bumblebees")
+
+
+# Plot the network
+plotweb(Agg.Pollinator.Groups.2021_T1_REL,
+        method = "normal", # Takes the order of treatments and pollinators as it is given in the data frame
+        col.low = Treatment.colours, # Colours the boxes of the treatments
+        col.high = Pollinator.colours, # Colours the boxes of the pollinators
+        col.interaction = Interaction.colours, # Colours the interaction lines
+        ybig = 1.2, # Makes the space between upper and lower boxes a bit smaller
+        bor.col.interaction = NA, # Remove the black border color
+        bor.col.high = NA, # Remove the black border color
+        bor.col.low = NA,  # Remove the black border color
+        text.rot = 0) # Rotate the labels 90 degrees
+
+
+
+# _ Year 1 - T2 ----
+# Number of plants
+N_Plants <- table(Pollinator.Groups.2020_T2$Treatment)
+
+# Number of observations in each of the treatments
+Agg.Pollinator.Groups.2020_T2 <- aggregate(Pollinator.Groups.2020_T2[,5:9], 
+                                           by = list(Pollinator.Groups.2020_T2$Treatment), 
+                                           FUN = sum)
+
+
+# Average number of observations per plant in each treatment
+Agg.Pollinator.Groups.2020_T2_REL <-  Agg.Pollinator.Groups.2020_T2[,2:6] / N_Plants
+
+# Set rownames
+row.names(Agg.Pollinator.Groups.2020_T2_REL) <-  Agg.Pollinator.Groups.2020_T2$Group.1
+
+# Adjust the column names
+colnames(Agg.Pollinator.Groups.2020_T2_REL) <- c("Syrphid flies", 
+                                                 "Other flies", 
+                                                 "Honey bees", 
+                                                 "Solitary bees", 
+                                                 "Bumblebees")
+
+
+# Plot the network
+plotweb(Agg.Pollinator.Groups.2020_T2_REL,
+        method = "normal", # Takes the order of treatments and pollinators as it is given in the data frame
+        col.low = Treatment.colours, # Colours the boxes of the treatments
+        col.high = Pollinator.colours, # Colours the boxes of the pollinators
+        col.interaction = Interaction.colours, # Colours the interaction lines
+        ybig = 1.2, # Makes the space between upper and lower boxes a bit smaller
+        bor.col.interaction = NA, # Remove the black border color
+        bor.col.high = NA, # Remove the black border color
+        bor.col.low = NA,  # Remove the black border color
+        text.rot = 0) # Rotate the labels 90 degrees
+
+# _ Year 2 - T2 ----
+# Number of plants
+N_Plants <- table(Pollinator.Groups.2021_T2$Treatment)
+
+# Number of observations in each of the treatments
+Agg.Pollinator.Groups.2021_T2 <- aggregate(Pollinator.Groups.2021_T2[,5:9], 
+                                           by = list(Pollinator.Groups.2021_T2$Treatment), 
+                                           FUN = sum)
+
+
+# Average number of observations per plant in each treatment
+Agg.Pollinator.Groups.2021_T2_REL <-  Agg.Pollinator.Groups.2021_T2[,2:6] / N_Plants
+
+# Set rownames
+row.names(Agg.Pollinator.Groups.2021_T2_REL) <-  Agg.Pollinator.Groups.2021_T2$Group.1
+
+# Adjust the column names
+colnames(Agg.Pollinator.Groups.2021_T2_REL) <- c("Syrphid flies", 
+                                                 "Other flies", 
+                                                 "Honey bees", 
+                                                 "Solitary bees", 
+                                                 "Bumblebees")
+
+
+# Plot the network
+plotweb(Agg.Pollinator.Groups.2021_T2_REL,
+        method = "normal", # Takes the order of treatments and pollinators as it is given in the data frame
+        col.low = Treatment.colours, # Colours the boxes of the treatments
+        col.high = Pollinator.colours, # Colours the boxes of the pollinators
+        col.interaction = Interaction.colours, # Colours the interaction lines
+        ybig = 1.2, # Makes the space between upper and lower boxes a bit smaller
+        bor.col.interaction = NA, # Remove the black border color
+        bor.col.high = NA, # Remove the black border color
+        bor.col.low = NA,  # Remove the black border color
+        text.rot = 0) # Rotate the labels 90 degrees
+```
+
+#_
+# C. SEM analysis
+
+Overview of the structural equation models fitted to the data. To make this document concise we do not present the initial exploration, model selection, and model validation steps needed to specify the causal relations within the SEM. We then proceed by estimating the total effects of each variable included in the SEM on seed production.
+
+To calculate the total effects of variables in the SEM on seed production, we need to calculate and sum it's component effects (the direct effect and indirect effect). These component effects should be calculated using the standardized path estimates returned when fitting the SEM. However, PSEM has a known bug where it fails to return standardized path coefficients when component models are fitted with a probability distribution that is not Gaussian (https://github.com/jslefche/piecewiseSEM/issues/232). We therefore used the best fitting GLS models as component models of the SEM
+
+# 1. Data
+```{r, SEM Data}
+# Data
+Data2020 <- read_excel("Field_2020_2021.xlsx", sheet = "2020")
+Data2021 <- read_excel("Field_2020_2021.xlsx", sheet = "2021")
+
+# Set unique block codes for 2021 and 2021
+Data2020$Block_Code <- paste(Data2020$Block,"20", sep = "") 
+Data2021$Block_Code <- paste(Data2021$Block,"21", sep = "") 
+
+# Add an identifier for the year, and combine the data sets
+Data2020$Year <- 2020
+Data2021$Year <- 2021
+
+Field.Data <- rbind(Data2020,Data2021)
+
+# Set appropriate columns to factor levels
+Factors <- c("Plant_Code","Treatment","Block", "Block_Code", "Year")
+Field.Data[Factors] <- lapply(Field.Data[Factors], factor)
+
+# Specify the order of levels for consistent plotting and color matching
+Field.Data$Treatment <- factor(Field.Data$Treatment, levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+SEM_Variables <- c("Plant_Code"
+  ,"Block_Code"
+  , "WidthT1"
+  , "WidthT2"
+  , "NflowT1"
+  , "NflowT2"
+  , "HeightT1"
+  , "HeightT2"
+  , "Sow_To_Flower"
+  , "TotalPollinators"
+  , "FPP"
+  , "Nseeds"
+  , "Treatment"
+  , "Year")
+
+# Remove plants for which we don't have all observations
+SEM.Data <- na.omit(Field.Data[, SEM_Variables])
+
+# Some data transformations are needed. This matches the regression analyses we performed before.
+Transformations <- c("NflowT1","NflowT2","Sow_To_Flower", "FPP", "Nseeds")
+SEM.Data[Transformations] <- lapply(SEM.Data[Transformations], log)
+
+table(SEM.Data$Treatment)
+
+```
+
+# 2. Causal hypothesis
+## 2.1 Overall
+
+```{r, Overall causal hypothesis}
+Causal.H <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = SEM.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = SEM.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(Overall.Summary <- summary(Causal.H)) 
+```
+
+## 2.2 Control
+
+```{r, Control causal hypothesis}
+# Subset data
+C.Data <- subset(SEM.Data, Treatment == "C")
+
+# Fit the PSEM
+Causal.H.C <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = C.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = C.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = C.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = C.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = C.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = C.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = C.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = C.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = C.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(C.Summary <- summary(Causal.H.C)) 
+```
+
+## 2.3 Chitin
+
+```{r, Chitin causal hypothesis}
+# Subset data
+CHT.Data <- subset(SEM.Data, Treatment == "CHT")
+
+# Fit the PSEM
+Causal.H.CHT <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = CHT.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = CHT.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(CHT.Summary <- summary(Causal.H.CHT)) 
+```
+
+## 2.4 Organic fertilizer
+
+```{r, Organic fertilizer causal hypothesis}
+# Subset data
+OF.Data <- subset(SEM.Data, Treatment == "OF")
+
+# Fit the PSEM
+Causal.H.OF <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = OF.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = OF.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = OF.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = OF.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = OF.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = OF.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = OF.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = OF.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = OF.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(OF.Summary <- summary(Causal.H.OF)) 
+```
+
+## 2.5 House Cricket
+
+```{r, House Cricket causal hypothesis}
+# Subset data
+HC.Data <- subset(SEM.Data, Treatment == "HC")
+
+# Fit the PSEM
+Causal.H.HC <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = HC.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = HC.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = HC.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = HC.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = HC.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = HC.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = HC.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = HC.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = HC.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(HC.Summary <- summary(Causal.H.HC)) 
+```
+
+## 2.6 Black Soldier Fly
+
+```{r, Black Soldier Fly causal hypothesis}
+# Subset data
+BSF.Data <- subset(SEM.Data, Treatment == "BSF")
+
+# Fit the PSEM
+Causal.H.BSF <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = BSF.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = BSF.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(BSF.Summary <- summary(Causal.H.BSF)) 
+```
+
+## 2.7 Mealworm
+
+```{r, Mealworm causal hypothesis}
+# Subset data
+MW.Data <- subset(SEM.Data, Treatment == "MW")
+
+# Fit the PSEM
+Causal.H.MW <- psem(
+  # M1
+  lme(Sow_To_Flower ~ WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = MW.Data),
+  
+  # M2
+  lme(NflowT1 ~ WidthT1 + Sow_To_Flower + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ Sow_To_Flower)),
+      method = "REML",
+      data = MW.Data),
+  
+  # M3
+  lme(NflowT2 ~ Sow_To_Flower + WidthT1 + WidthT2 + NflowT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = MW.Data),
+  
+  # M4
+  lme(WidthT2 ~ HeightT1 + Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = MW.Data),
+  
+  # M5
+  lme(HeightT1 ~ Sow_To_Flower + WidthT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      method = "REML",
+      data = MW.Data),
+  
+  # M6
+  lme(HeightT2 ~ Sow_To_Flower + WidthT2 + HeightT1 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = MW.Data),
+  
+  # M7
+  lme(TotalPollinators ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year,
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),varExp(form =~ WidthT2)),
+      method = "REML",
+      data = MW.Data),
+  
+  # M8
+  lme(FPP ~ Sow_To_Flower + NflowT1 + NflowT2 + HeightT1 + HeightT2 + Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varIdent(form = ~ 1 | Year),
+      method = "REML",
+      data = MW.Data),
+  
+  # M9
+  lme(Nseeds ~ NflowT2 + HeightT2 + WidthT2 + FPP + TotalPollinators +  Year, 
+      random = list(Block_Code = ~ 1),
+      weights = varComb(varIdent(form = ~ 1 | Year),
+                        varPower(form =~ WidthT2)),
+      method = "REML",
+      data = MW.Data),
+  
+  # Correlated errors
+  NflowT1 %~~% HeightT1,
+  NflowT2 %~~% HeightT2,
+  FPP %~~% TotalPollinators
+)
+(MW.Summary <- summary(Causal.H.MW)) 
+```
+
+
+# 3. Effects on seed set
+
+## 3.1 Extract path coefficients
+```{r, extract path coefficients}
+Not.Causal.Paths <- c("Year",
+                     "Year = 2020",
+                     "Year = 2021",
+                     "~~HeightT1",
+                     "~~HeightT2",
+                     "~~TotalPollinators")
+
+# Control dataset
+Paths.Control <- subset(as.data.frame(C.Summary$coefficients), 
+                        Predictor %notin% Not.Causal.Paths)
+Paths.Control$Treatment <- "C"
+Paths.Control$Pathway <- interaction(Paths.Control$Response, Paths.Control$Predictor)
+
+Numerics <- c("Estimate","Std.Error","Std.Estimate")
+Factors <- c("Response","Predictor","Treatment", "Pathway")
+Paths.Control[Numerics] <- lapply(Paths.Control[Numerics], as.numeric)
+Paths.Control[Factors] <- lapply(Paths.Control[Factors], factor)
+
+# Chitin paths
+Paths.Chitin <- subset(as.data.frame(CHT.Summary$coefficients), 
+                       Predictor %notin% Not.Causal.Paths)
+Paths.Chitin$Treatment <- "CHT"
+Paths.Chitin$Pathway <- interaction(Paths.Chitin$Response, Paths.Chitin$Predictor)
+
+# Organic Fertilizer paths
+Paths.Organic <- subset(as.data.frame(OF.Summary$coefficients), 
+                        Predictor %notin% Not.Causal.Paths)
+Paths.Organic$Treatment <- "OF"
+Paths.Organic$Pathway <- interaction(Paths.Organic$Response, Paths.Organic$Predictor)
+
+# Cricket paths
+Paths.HC_Amended <- subset(as.data.frame(HC.Summary$coefficients), 
+                           Predictor %notin% Not.Causal.Paths)
+Paths.HC_Amended$Treatment <- "HC"
+Paths.HC_Amended$Pathway <- interaction(Paths.HC_Amended$Response, Paths.HC_Amended$Predictor)
+
+# BSF paths
+Paths.BSF_Amended <- subset(as.data.frame(BSF.Summary$coefficients), 
+                            Predictor %notin% Not.Causal.Paths)
+Paths.BSF_Amended$Treatment <- "BSF"
+Paths.BSF_Amended$Pathway <- interaction(Paths.BSF_Amended$Response, Paths.BSF_Amended$Predictor)
+# MW paths
+Paths.MW_Amended <- subset(as.data.frame(MW.Summary$coefficients), 
+                           Predictor %notin% Not.Causal.Paths)
+Paths.MW_Amended$Treatment <- "MW"
+Paths.MW_Amended$Pathway <- interaction(Paths.MW_Amended$Response, Paths.MW_Amended$Predictor)
+
+
+# Note: We are keeping the control paths in a separate dataframe as the other treatments, as the causal effects observed for control plants will serve as the baseline.
+
+Combined.results <- rbind(Paths.Chitin,
+                          Paths.Organic,
+                          Paths.HC_Amended,
+                          Paths.BSF_Amended,
+                          Paths.MW_Amended)
+
+
+Combined.results[Numerics] <- lapply(Combined.results[Numerics], as.numeric)
+Combined.results[Factors] <- lapply(Combined.results[Factors], factor)
+
+Combined.results$Treatment <- factor(Combined.results$Treatment, 
+                                     levels = c("CHT", "OF", 
+                                                "BSF", "HC","MW"))
+
+```
+
+
+## 3.2 Calculate effects
+```{r, calculate effects on seed production}
+
+# First specify this for control plants
+# FPP 
+FPP_Direct <- Paths.Control[which(Paths.Control$Pathway == "Nseeds.FPP"),]$Std.Estimate
+FPP_Indirect <- 0
+FPP_Total <- FPP_Direct + FPP_Indirect
+
+# N pollinators 
+Total_Poll_Direct <- Paths.Control[which(Paths.Control$Pathway == "Nseeds.TotalPollinators"),]$Std.Estimate
+Total_Poll_Indirect <- 0
+Total_Poll_Total <- Total_Poll_Direct + Total_Poll_Indirect
+
+# Height T2
+HT2_Direct <- Paths.Control[which(Paths.Control$Pathway == "Nseeds.HeightT2"),]$Std.Estimate
+HT2_Indirect <- 
+  # Path over FPP 
+  Paths.Control[which(Paths.Control$Pathway == "FPP.HeightT2"),]$Std.Estimate * FPP_Direct +
+  # Path over Total_Poll
+  Paths.Control[which(Paths.Control$Pathway == "TotalPollinators.HeightT2"),]$Std.Estimate * Total_Poll_Direct
+HT2_Total <- HT2_Direct + HT2_Indirect
+
+# NFlowers T2
+NFT2_Direct <- Paths.Control[which(Paths.Control$Pathway == "Nseeds.NflowT2"),]$Std.Estimate
+NFT2_Indirect <- 
+  # Path over FPP 
+  Paths.Control[which(Paths.Control$Pathway == "FPP.NflowT2"),]$Std.Estimate * FPP_Direct +
+  # Path over Total_Poll
+  Paths.Control[which(Paths.Control$Pathway == "TotalPollinators.NflowT2"),]$Std.Estimate * Total_Poll_Direct
+NFT2_Total <- NFT2_Direct + NFT2_Indirect
+
+# Width T2
+WT2_Direct <- Paths.Control[which(Paths.Control$Pathway == "Nseeds.WidthT2"),]$Std.Estimate
+WT2_Indirect <- 
+  # Path over Height T2 
+  Paths.Control[which(Paths.Control$Pathway == "HeightT2.WidthT2"),]$Std.Estimate * HT2_Direct +
+  # Path over NFlowers T2
+  Paths.Control[which(Paths.Control$Pathway == "NflowT2.WidthT2"),]$Std.Estimate * NFT2_Direct
+WT2_Total <- WT2_Direct + WT2_Indirect
+
+# NFlowers T1
+NFT1_Direct <- 0 
+NFT1_Indirect <- 
+  # Path over N_Flowers T2
+  Paths.Control[which(Paths.Control$Pathway == "NflowT2.NflowT1"),]$Std.Estimate * NFT2_Direct +
+  # Path over FPP
+  Paths.Control[which(Paths.Control$Pathway == "FPP.NflowT1"),]$Std.Estimate * FPP_Direct +
+  # Path over Total Pollinators
+  Paths.Control[which(Paths.Control$Pathway == "TotalPollinators.NflowT1"),]$Std.Estimate * Total_Poll_Direct
+NFT1_Total <- NFT1_Direct + NFT1_Indirect
+
+# Height T1
+HT1_Direct <- 0
+HT1_Indirect <- 
+  # Path over Height  T2
+  Paths.Control[which(Paths.Control$Pathway == "HeightT2.HeightT1"),]$Std.Estimate * HT2_Total + 
+  # Path over Width T2 
+  Paths.Control[which(Paths.Control$Pathway == "WidthT2.HeightT1"),]$Std.Estimate * WT2_Total +
+  # Path over FPP
+  Paths.Control[which(Paths.Control$Pathway == "FPP.HeightT1"),]$Std.Estimate * FPP_Direct +
+  # Path over Total Pollinators
+  Paths.Control[which(Paths.Control$Pathway == "TotalPollinators.HeightT1"),]$Std.Estimate * Total_Poll_Direct  
+
+HT1_Total <- HT1_Direct + HT1_Indirect
+
+
+# Sow To Flower
+
+STF_Direct <- 0
+STF_Indirect <- 
+  # Path over Height  T2
+  Paths.Control[which(Paths.Control$Pathway == "HeightT2.Sow_To_Flower"),]$Std.Estimate * HT2_Total +
+  # Path over Width  T2
+  Paths.Control[which(Paths.Control$Pathway == "WidthT2.Sow_To_Flower"),]$Std.Estimate * WT2_Total +
+  # Path over N Flowers  T2
+  Paths.Control[which(Paths.Control$Pathway == "NflowT2.Sow_To_Flower"),]$Std.Estimate * NFT2_Total +
+  # Path over Height  T1
+  Paths.Control[which(Paths.Control$Pathway == "HeightT1.Sow_To_Flower"),]$Std.Estimate * HT1_Total +
+  # Path over N Flowers  T1
+  Paths.Control[which(Paths.Control$Pathway == "NflowT1.Sow_To_Flower"),]$Std.Estimate * NFT1_Total +
+  # Path over FPP
+  Paths.Control[which(Paths.Control$Pathway == "FPP.Sow_To_Flower"),]$Std.Estimate * FPP_Direct +
+  # Path over Total Pollinators
+  Paths.Control[which(Paths.Control$Pathway == "TotalPollinators.Sow_To_Flower"),]$Std.Estimate * Total_Poll_Direct
+
+STF_Total <- STF_Direct + STF_Indirect
+
+# Width T1
+
+WT1_Direct <- 0
+WT1_Indirect <- 
+  # Path over Height T1
+  Paths.Control[which(Paths.Control$Pathway == "HeightT1.WidthT1"),]$Std.Estimate * HT1_Total +
+  # Path over N Flowers T1
+  Paths.Control[which(Paths.Control$Pathway == "NflowT1.WidthT1"),]$Std.Estimate * NFT1_Total +
+  # Path over N Flowers T2
+  Paths.Control[which(Paths.Control$Pathway == "NflowT2.WidthT1"),]$Std.Estimate * NFT2_Total +
+  # Path over Width T2
+  Paths.Control[which(Paths.Control$Pathway == "WidthT2.WidthT1"),]$Std.Estimate * WT2_Total +
+  # Path over Sow to Flower
+  Paths.Control[which(Paths.Control$Pathway == "Sow_To_Flower.WidthT1"),]$Std.Estimate * STF_Total
+
+
+WT1_Total <- WT1_Direct + WT1_Indirect
+
+Control_Effects <- rbind(WT1_Total,
+                         STF_Total,
+                         HT1_Total,
+                         NFT1_Total,
+                         WT2_Total,
+                         HT2_Total,
+                         NFT2_Total,
+                         FPP_Total,
+                         Total_Poll_Total)
+
+
+# Now for the other treatments, using a loop
+
+All_Effects <- data.frame("C" = Control_Effects)
+
+Treatmen_Levels <- levels(Combined.results$Treatment)
+
+for (i in 1:length(Treatmen_Levels)){
+  Path_Data <- subset(Combined.results, Treatment == Treatmen_Levels[i])
+  
+  # Effects of each variable on seed production
+  
+  # FPP 
+  FPP_Direct <- Path_Data[which(Path_Data$Pathway == "Nseeds.FPP"),]$Std.Estimate
+  FPP_Indirect <- 0
+  FPP_Total <- FPP_Direct + FPP_Indirect
+  
+  # N pollinators 
+  Total_Poll_Direct <- Path_Data[which(Path_Data$Pathway == "Nseeds.TotalPollinators"),]$Std.Estimate
+  Total_Poll_Indirect <- 0
+  Total_Poll_Total <- Total_Poll_Direct + Total_Poll_Indirect
+  
+  # Height T2
+  HT2_Direct <- Path_Data[which(Path_Data$Pathway == "Nseeds.HeightT2"),]$Std.Estimate
+  HT2_Indirect <- 
+    # Path over FPP 
+    Path_Data[which(Path_Data$Pathway == "FPP.HeightT2"),]$Std.Estimate * FPP_Direct +
+    # Path over Total_Poll
+    Path_Data[which(Path_Data$Pathway == "TotalPollinators.HeightT2"),]$Std.Estimate * Total_Poll_Direct
+  HT2_Total <- HT2_Direct + HT2_Indirect
+  
+  # NFlowers T2
+  NFT2_Direct <- Path_Data[which(Path_Data$Pathway == "Nseeds.NflowT2"),]$Std.Estimate
+  NFT2_Indirect <- 
+    # Path over FPP 
+    Path_Data[which(Path_Data$Pathway == "FPP.NflowT2"),]$Std.Estimate * FPP_Direct +
+    # Path over Total_Poll
+    Path_Data[which(Path_Data$Pathway == "TotalPollinators.NflowT2"),]$Std.Estimate * Total_Poll_Direct
+  NFT2_Total <- NFT2_Direct + NFT2_Indirect
+  
+  # Width T2
+  WT2_Direct <- Path_Data[which(Path_Data$Pathway == "Nseeds.WidthT2"),]$Std.Estimate
+  WT2_Indirect <- 
+    # Path over Height T2 
+    Path_Data[which(Path_Data$Pathway == "HeightT2.WidthT2"),]$Std.Estimate * HT2_Direct +
+    # Path over NFlowers T2
+    Path_Data[which(Path_Data$Pathway == "NflowT2.WidthT2"),]$Std.Estimate * NFT2_Direct
+  WT2_Total <- WT2_Direct + WT2_Indirect
+  
+  # NFlowers T1
+  NFT1_Direct <- 0 
+  NFT1_Indirect <- 
+    # Path over N_Flowers T2
+    Path_Data[which(Path_Data$Pathway == "NflowT2.NflowT1"),]$Std.Estimate * NFT2_Direct +
+    # Path over FPP
+    Path_Data[which(Path_Data$Pathway == "FPP.NflowT1"),]$Std.Estimate * FPP_Direct +
+    # Path over Total Pollinators
+    Path_Data[which(Path_Data$Pathway == "TotalPollinators.NflowT1"),]$Std.Estimate * Total_Poll_Direct
+  NFT1_Total <- NFT1_Direct + NFT1_Indirect
+  
+  # Height T1
+  HT1_Direct <- 0
+  HT1_Indirect <- 
+    # Path over Height  T2
+    Path_Data[which(Path_Data$Pathway == "HeightT2.HeightT1"),]$Std.Estimate * HT2_Total + 
+    # Path over Width T2 
+    Path_Data[which(Path_Data$Pathway == "WidthT2.HeightT1"),]$Std.Estimate * WT2_Total +
+    # Path over FPP
+    Path_Data[which(Path_Data$Pathway == "FPP.HeightT1"),]$Std.Estimate * FPP_Direct +
+    # Path over Total Pollinators
+    Path_Data[which(Path_Data$Pathway == "TotalPollinators.HeightT1"),]$Std.Estimate * Total_Poll_Direct  
+  
+  HT1_Total <- HT1_Direct + HT1_Indirect
+  
+  
+  # Sow To Flower
+  
+  STF_Direct <- 0
+  STF_Indirect <- 
+    # Path over Height  T2
+    Path_Data[which(Path_Data$Pathway == "HeightT2.Sow_To_Flower"),]$Std.Estimate * HT2_Total +
+    # Path over Width  T2
+    Path_Data[which(Path_Data$Pathway == "WidthT2.Sow_To_Flower"),]$Std.Estimate * WT2_Total +
+    # Path over N Flowers  T2
+    Path_Data[which(Path_Data$Pathway == "NflowT2.Sow_To_Flower"),]$Std.Estimate * NFT2_Total +
+    # Path over Height  T1
+    Path_Data[which(Path_Data$Pathway == "HeightT1.Sow_To_Flower"),]$Std.Estimate * HT1_Total +
+    # Path over N Flowers  T1
+    Path_Data[which(Path_Data$Pathway == "NflowT1.Sow_To_Flower"),]$Std.Estimate * NFT1_Total +
+    # Path over FPP
+    Path_Data[which(Path_Data$Pathway == "FPP.Sow_To_Flower"),]$Std.Estimate * FPP_Direct +
+    # Path over Total Pollinators
+    Path_Data[which(Path_Data$Pathway == "TotalPollinators.Sow_To_Flower"),]$Std.Estimate * Total_Poll_Direct
+  
+  STF_Total <- STF_Direct + STF_Indirect
+  
+  
+  # Width T1
+  WT1_Direct <- 0
+  WT1_Indirect <- 
+    # Path over Height T1
+    Path_Data[which(Path_Data$Pathway == "HeightT1.WidthT1"),]$Std.Estimate * HT1_Total +
+    # Path over N Flowers T1
+    Path_Data[which(Path_Data$Pathway == "NflowT1.WidthT1"),]$Std.Estimate * NFT1_Total +
+    # Path over N Flowers T2
+    Path_Data[which(Path_Data$Pathway == "NflowT2.WidthT1"),]$Std.Estimate * NFT2_Total +
+    # Path over Width T2
+    Path_Data[which(Path_Data$Pathway == "WidthT2.WidthT1"),]$Std.Estimate * WT2_Total +
+    # Path over Sow to Flower
+    Path_Data[which(Path_Data$Pathway == "Sow_To_Flower.WidthT1"),]$Std.Estimate * STF_Total
+
+  WT1_Total <- WT1_Direct + WT1_Indirect
+  
+  Path_Effects <- as.data.frame(rbind(WT1_Total,
+                                      STF_Total,
+                                      HT1_Total,
+                                      NFT1_Total,
+                                      WT2_Total,
+                                      HT2_Total,
+                                      NFT2_Total,
+                                      FPP_Total,
+                                      Total_Poll_Total))
+  
+  colnames(Path_Effects) <- Treatmen_Levels[i]
+  
+  All_Effects <- cbind(All_Effects,Path_Effects)
+  
+}
+
+```
+
+## 3.3 Plot effects in heatmap
+
+```{r, Heatmap}
+
+Stacked_Effects <- data.frame("Treatment" = as.data.frame(stack(All_Effects))$ind,
+                              "Path" = c("SowToFlower","WidthT1","HeightT1","NFlowersT1",
+                                         "WidthT2","HeightT2","NFlowersT2","FPP","Total_Poll_Total"),
+                              "TotalEffect" = as.data.frame(stack(All_Effects))$values)
+
+
+Stacked_Effects$Path <- factor(Stacked_Effects$Path, 
+                               levels = c("SowToFlower","WidthT1","HeightT1","NFlowersT1",
+                                          "WidthT2","HeightT2","NFlowersT2","FPP","Total_Poll_Total"))
+
+Stacked_Effects$Treatment <- factor(Stacked_Effects$Treatment, 
+                               levels = c("C", "HC", "BSF", "MW", "CHT", "OF"))
+
+
+ggplot(data = Stacked_Effects, aes(x = Treatment, y = Path, fill = TotalEffect)) +
+  geom_tile() +
+  geom_text(aes(label = format(round(TotalEffect,2), nsmall = 2))) +
+  scale_fill_gradient2(name = "Effect on seed set",
+                       low = "#A51122",
+                       mid = "#FFFFFF",
+                       high = "#006228",
+                       limits = c(-1, 1), 
+                       breaks = seq(-1,1,by=0.25)) + 
+  scale_y_discrete(labels = c("SowToFlower" = "Time until flowering",
+                              "WidthT1" = "Width T1",
+                              "HeightT1" = "Heigh T1",
+                              "NFlowersT1" = "Number of flowers T1", 
+                              "WidthT2" = "Width T2",
+                              "HeightT2" = "Heigh T2",
+                              "NFlowersT2" = "Number of flowers T2",
+                              "FPP" = "Flowers visited per pollinator",
+                              "Total_Poll_Total" = "Total number of pollinators")) +
+  labs(y = " ") +
+  CustomPlot
+```
