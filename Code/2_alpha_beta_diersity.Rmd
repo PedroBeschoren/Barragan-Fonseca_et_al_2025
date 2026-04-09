@@ -216,6 +216,18 @@ ggsave(fisher_div, file = "./Results/3_fisher_diversity.pdf",
        units = "cm"  )
 
 
+shannon_div<-ggplot(calculated_diversity_df, aes(x =Treatment, y = shannon, fill = Treatment ))+
+  geom_boxplot()+
+  theme_bw()+
+  labs(title = "Fisher diversity indexes")
+
+
+#export as pdf
+ggsave(shannon_div, file = "./Results/3_shannon_diversity.pdf", 
+       width = 15, 
+       height = 15, 
+       units = "cm"  )
+
 
 ```
 
@@ -224,11 +236,10 @@ ggsave(fisher_div, file = "./Results/3_fisher_diversity.pdf",
 # 5 - alpha diversity tests
 Shannon diversity has a bit of heterogeniety per treatent:  p= 0.051. Fisher diversity instead has p=0.90 and the pattern in teh plot is the same. stats and post-hoc of shannon and fisher are similar.  let's use fisher diversities here due to lower heterogeniety
 
-
+## 5.1 - fisehr tests
 ```{r}
 # chech homogeniety of variances
 leveneTest((fisher) ~ Treatment, data = calculated_diversity_df) 
-
 
 # anova test
 anova_fisher<-aov(fisher ~ Treatment, data = calculated_diversity_df)
@@ -242,3 +253,19 @@ TukeyHSD(anova_fisher)
 
 ```
 
+## 5.2 - shannon tests
+```{r}
+# chech homogeniety of variances
+leveneTest((shannon) ~ Treatment, data = calculated_diversity_df) 
+
+# anova test
+anova_shannon<-aov(shannon ~ Treatment, data = calculated_diversity_df)
+
+# get p values
+summary(anova_shannon)
+
+# post-hoc, both Tukey and Least Significat Difference
+LSD.test(y = anova_shannon, "Treatment", group=TRUE, console=TRUE, p.adj= "fdr")
+TukeyHSD(anova_shannon)
+
+```
