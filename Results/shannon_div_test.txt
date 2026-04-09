@@ -1,0 +1,86 @@
+> shannon_div
+> # chech homogeniety of variances
+> leveneTest((shannon) ~ Treatment, data = calculated_diversity_df) 
+Levene's Test for Homogeneity of Variance (center = median)
+      Df F value  Pr(>F)  
+group  5  2.3876 0.05846 .
+      34                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+
+
+> anova_shannon<-aov(shannon ~ Treatment, data = calculated_diversity_df)
+> # get p values
+> summary(anova_shannon)
+            Df Sum Sq Mean Sq F value   Pr(>F)    
+Treatment    5  18.12   3.624   13.18 3.63e-07 ***
+Residuals   34   9.35   0.275                     
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+
+
+> # post-hoc, both Tukey and Least Significat Difference
+> LSD.test(y = anova_shannon, "Treatment", group=TRUE, console=TRUE, p.adj= "fdr")
+
+Study: anova_shannon ~ "Treatment"
+
+LSD t Test for shannon 
+P value adjustment method: fdr 
+
+Mean Square Error:  0.2750074 
+
+Treatment,  means and individual ( 95 %) CI
+
+     shannon       std r        se      LCL      UCL      Min      Max      Q25      Q50      Q75
+BSF 5.989616 0.1601994 7 0.1982089 5.586807 6.392425 5.766405 6.160606 5.864176 6.040658 6.115646
+C   4.301857 0.6195117 8 0.1854074 3.925064 4.678650 3.277240 5.159854 3.870627 4.439791 4.692037
+CHT 5.189993 0.5757868 7 0.1982089 4.787184 5.592802 4.251137 5.759694 4.898534 5.209318 5.656366
+HC  5.054706 0.4190552 7 0.1982089 4.651897 5.457515 4.457356 5.482352 4.799559 5.201576 5.321268
+MW  5.643022 0.2646279 6 0.2140901 5.207938 6.078105 5.302054 5.953563 5.452043 5.646802 5.853041
+OF  4.028953 0.8827143 5 0.2345239 3.552343 4.505563 2.750244 4.961221 3.707337 3.984876 4.741089
+
+Alpha: 0.05 ; DF Error: 34
+Critical Value of t: 2.032245 
+
+Groups according to probability of means differences and alpha level( 0.05 )
+
+Treatments with the same letter are not significantly different.
+
+     shannon groups
+BSF 5.989616      a
+MW  5.643022     ab
+CHT 5.189993      b
+HC  5.054706      b
+C   4.301857      c
+OF  4.028953      c
+
+
+
+
+> TukeyHSD(anova_shannon)
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = shannon ~ Treatment, data = calculated_diversity_df)
+
+$Treatment
+              diff         lwr         upr     p adj
+C-BSF   -1.6877595 -2.50693670 -0.86858228 0.0000064
+CHT-BSF -0.7996236 -1.64566615  0.04641902 0.0728689
+HC-BSF  -0.9349107 -1.78095326 -0.08886810 0.0232585
+MW-BSF  -0.3465945 -1.22718356  0.53399452 0.8394488
+OF-BSF  -1.9606630 -2.88745626 -1.03386983 0.0000039
+CHT-C    0.8881359  0.06895871  1.70731313 0.0271905
+HC-C     0.7528488 -0.06632840  1.57202602 0.0866233
+MW-C     1.3411650  0.48635487  2.19597506 0.0005030
+OF-C    -0.2729036 -1.17523881  0.62943170 0.9405172
+HC-CHT  -0.1352871 -0.98132970  0.71075547 0.9964778
+MW-CHT   0.4530290 -0.42756000  1.33361808 0.6337998
+OF-CHT  -1.1610395 -2.08783269 -0.23424626 0.0073208
+MW-HC    0.5883162 -0.29227288  1.46890520 0.3544345
+OF-HC   -1.0257524 -1.95254558 -0.09895915 0.0229561
+OF-MW   -1.6140685 -2.57250196 -0.65563507 0.0001825
